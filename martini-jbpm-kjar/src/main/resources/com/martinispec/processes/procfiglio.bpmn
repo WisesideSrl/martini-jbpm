@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                   xmlns:drools="http://www.jboss.org/drools"
+                   id="_ProcFiglio"
+                   targetNamespace="http://www.jboss.org/drools">
+  
+  <bpmn2:itemDefinition id="_ordineIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_lottoNumeroItem" structureRef="String"/>
+  
+  <bpmn2:signal id="_avviaFiglioSignal" name="avviaFiglio"/>
+  
+  <bpmn2:process id="com.martinispec.procfiglio" 
+                 drools:packageName="com.martinispec.processes" 
+                 drools:version="1.0" 
+                 name="ProcFiglio" 
+                 isExecutable="true">
+    
+    <!-- Process Variables -->
+    <bpmn2:property id="ordineId" itemSubjectRef="_ordineIdItem" name="ordineId"/>
+    <bpmn2:property id="lottoNumero" itemSubjectRef="_lottoNumeroItem" name="lottoNumero"/>
+    
+    <!-- Signal Start Event -->
+    <bpmn2:startEvent id="_startEvent" name="Ricevi Avvio">
+      <bpmn2:outgoing>_flow1</bpmn2:outgoing>
+      <bpmn2:dataOutput id="_startEvent_ordineIdOutput" name="ordineId"/>
+      <bpmn2:dataOutput id="_startEvent_lottoNumeroOutput" name="lottoNumero"/>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_startEvent_ordineIdOutput</bpmn2:sourceRef>
+        <bpmn2:targetRef>ordineId</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_startEvent_lottoNumeroOutput</bpmn2:sourceRef>
+        <bpmn2:targetRef>lottoNumero</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:outputSet>
+        <bpmn2:dataOutputRefs>_startEvent_ordineIdOutput</bpmn2:dataOutputRefs>
+        <bpmn2:dataOutputRefs>_startEvent_lottoNumeroOutput</bpmn2:dataOutputRefs>
+      </bpmn2:outputSet>
+      <bpmn2:signalEventDefinition signalRef="_avviaFiglioSignal"/>
+    </bpmn2:startEvent>
+    
+    <!-- Script Task: Log Dati Ricevuti -->
+    <bpmn2:scriptTask id="_logDati" name="Log Dati Ricevuti" scriptFormat="http://www.java.com/java">
+      <bpmn2:incoming>_flow1</bpmn2:incoming>
+      <bpmn2:outgoing>_flow2</bpmn2:outgoing>
+      <bpmn2:script><![CDATA[
+System.out.println("[ProcFiglio] AVVIATO! Dati ricevuti dal padre:");
+System.out.println("[ProcFiglio] ordineId: " + ordineId);
+System.out.println("[ProcFiglio] lottoNumero: " + lottoNumero);
+]]></bpmn2:script>
+    </bpmn2:scriptTask>
+    
+    <!-- Script Task: Elabora Ordine -->
+    <bpmn2:scriptTask id="_elaboraOrdine" name="Elabora Ordine" scriptFormat="http://www.java.com/java">
+      <bpmn2:incoming>_flow2</bpmn2:incoming>
+      <bpmn2:outgoing>_flow3</bpmn2:outgoing>
+      <bpmn2:script><![CDATA[
+System.out.println("[ProcFiglio] Elaborazione ordine " + ordineId);
+System.out.println("[ProcFiglio] Lotto " + lottoNumero + " in processamento");
+
+// Simulazione elaborazione
+try {
+    Thread.sleep(1000);
+} catch (InterruptedException e) {
+    e.printStackTrace();
+}
+
+System.out.println("[ProcFiglio] Ordine elaborato con successo");
+]]></bpmn2:script>
+    </bpmn2:scriptTask>
+    
+    <!-- End Event -->
+    <bpmn2:endEvent id="_endEvent" name="End">
+      <bpmn2:incoming>_flow3</bpmn2:incoming>
+    </bpmn2:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn2:sequenceFlow id="_flow1" sourceRef="_startEvent" targetRef="_logDati"/>
+    <bpmn2:sequenceFlow id="_flow2" sourceRef="_logDati" targetRef="_elaboraOrdine"/>
+    <bpmn2:sequenceFlow id="_flow3" sourceRef="_elaboraOrdine" targetRef="_endEvent"/>
+    
+  </bpmn2:process>
+  
+  <!-- Diagram -->
+  <bpmndi:BPMNDiagram>
+    <bpmndi:BPMNPlane bpmnElement="com.martinispec.procfiglio">
+      <bpmndi:BPMNShape id="_startEvent_di" bpmnElement="_startEvent">
+        <dc:Bounds x="50" y="100" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_logDati_di" bpmnElement="_logDati">
+        <dc:Bounds x="136" y="78" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_elaboraOrdine_di" bpmnElement="_elaboraOrdine">
+        <dc:Bounds x="286" y="78" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_endEvent_di" bpmnElement="_endEvent">
+        <dc:Bounds x="436" y="100" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="_flow1_di" bpmnElement="_flow1">
+        <di:waypoint x="86" y="118"/>
+        <di:waypoint x="136" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="_flow2_di" bpmnElement="_flow2">
+        <di:waypoint x="236" y="118"/>
+        <di:waypoint x="286" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="_flow3_di" bpmnElement="_flow3">
+        <di:waypoint x="386" y="118"/>
+        <di:waypoint x="436" y="118"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  
+</bpmn2:definitions>

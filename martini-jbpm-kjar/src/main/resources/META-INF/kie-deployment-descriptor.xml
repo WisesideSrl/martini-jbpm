@@ -13,25 +13,28 @@
     <globals/>
     
     <work-item-handlers>
-        <!-- Custom Handlers con Logging -->
+        <!-- Handler per Send/Receive Tasks (se necessari) -->
+        <!--
         <work-item-handler>
             <resolver>mvel</resolver>
-            <identifier>new com.martinispec.handlers.LoggingSendTaskHandler()</identifier>
+            <identifier>new org.jbpm.bpmn2.handler.SendTaskHandler()</identifier>
             <parameters/>
             <name>Send Task</name>
         </work-item-handler>
         <work-item-handler>
             <resolver>mvel</resolver>
-            <identifier>new org.jbpm.process.workitem.bpmn2.ServiceTaskHandler(ksession, classLoader)</identifier>
-            <parameters/>
-            <name>Service Task</name>
-        </work-item-handler>
-        
-        <work-item-handler>
-            <resolver>mvel</resolver>
             <identifier>new org.jbpm.bpmn2.handler.ReceiveTaskHandler(ksession)</identifier>
             <parameters/>
             <name>Receive Task</name>
+        </work-item-handler>
+        -->
+        
+        <!-- Service Task Handler (se usi Service Tasks) -->
+        <work-item-handler>
+            <resolver>mvel</resolver>
+            <identifier>new org.jbpm.process.workitem.bpmn2.ServiceTaskHandler(ksession, classLoader)</identifier>
+            <parameters/>
+            <name>Service Task</name>
         </work-item-handler>
     </work-item-handlers>
     

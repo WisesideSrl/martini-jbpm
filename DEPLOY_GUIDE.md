@@ -1,17 +1,35 @@
 # Guida al Deploy su Business Central
 
-## ⚠️ Problema Build Maven
+## ✅ Fix Applicata: Problema Parent POM Risolto
 
-Il comando `mvn clean install` fallisce con errore:
+**Problema Originale**: 
 ```
-Cannot create instance of class: org.jbpm.bpmn2.BPMN2ProcessProviderImpl
+Non-resolvable parent POM for com.martinispec:martiniavicolo:[unknown-version]: 
+Failure to find com.martinispec:martinispec-parent:pom:1.0.0-SNAPSHOT
 ```
 
-Questo è un bug noto di jBPM 7.74.1 con il `kie-maven-plugin` su Java 11+.
+**Soluzione**: Rimosso il riferimento al parent POM. Il `pom.xml` del KJAR è ora **standalone** e compatibile con Business Central.
 
-## ✅ Soluzione: Import Diretto in Business Central
+## 📝 Import in Business Central
 
-### Passo 1: Crea Repository GitHub
+### Passo 1: Pull Ultime Modifiche da GitHub
+
+**⚠️ IMPORTANTE**: Prima di fare il deploy, aggiorna il progetto in Business Central con le ultime modifiche.
+
+```bash
+# Nel tuo terminale locale, verifica che il push sia andato a buon fine
+git log --oneline -1
+# Dovresti vedere: fix: Remove parent POM reference for Business Central compatibility
+```
+
+**In Business Central**:
+
+1. Vai a **Menu → Design → Projects**
+2. Apri il progetto `martiniavicolo`
+3. Clicca su **Reimport** (o elimina e re-importa il progetto)
+4. Oppure: Settings → Branches → Pull Changes
+
+### Passo 2: Build and Deploy
 
 ```bash
 cd /Users/robertobisignano/Documents/Progetti/MartiniSpec

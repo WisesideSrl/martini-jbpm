@@ -26,6 +26,11 @@
   <bpmn2:message id="_avviaFiglioMessage" name="avviaFiglio" itemRef="_ordineIdItem"/>
   <bpmn2:message id="_figlioCompletatoMessage" name="figlioCompletato" itemRef="_ordineIdItem"/>
   
+  <!-- Correlation Key - DEVE essere definito prima del processo -->
+  <bpmn2:correlationKey name="ordineIdKey" id="_ordineIdCorrelationKey">
+    <bpmn2:correlationPropertyRef>ordineIdCorrelation</bpmn2:correlationPropertyRef>
+  </bpmn2:correlationKey>
+  
   <bpmn2:process id="com.martinispec.processopadre" 
                  drools:packageName="com.martinispec.processes" 
                  drools:version="1.0" 
@@ -155,11 +160,6 @@ System.out.println("[ProcessoPadre] ======================================");
     <bpmn2:sequenceFlow id="_flow6" sourceRef="_finalizza" targetRef="_endEvent"/>
     
   </bpmn2:process>
-  
-  <!-- Correlation Key -->
-  <bpmn2:correlationKey name="ordineIdKey" id="_ordineIdCorrelationKey">
-    <bpmn2:correlationPropertyRef>ordineIdCorrelation</bpmn2:correlationPropertyRef>
-  </bpmn2:correlationKey>
   
   <!-- Diagram -->
   <bpmndi:BPMNDiagram>

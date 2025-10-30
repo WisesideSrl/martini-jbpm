@@ -12,6 +12,8 @@
   <bpmn2:itemDefinition id="_ordineIdItem" structureRef="String"/>
   <bpmn2:itemDefinition id="_lottoNumeroItem" structureRef="String"/>
   <bpmn2:itemDefinition id="_risultatoItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_correlationKeysItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_payloadItem" structureRef="Object"/>
   
   <bpmn2:process id="com.martinispec.procfiglio" 
                  drools:packageName="com.martinispec.processes" 
@@ -22,6 +24,8 @@
     <bpmn2:property id="ordineId" itemSubjectRef="_ordineIdItem" name="ordineId"/>
     <bpmn2:property id="lottoNumero" itemSubjectRef="_lottoNumeroItem" name="lottoNumero"/>
     <bpmn2:property id="risultato" itemSubjectRef="_risultatoItem" name="risultato"/>
+    <bpmn2:property id="jmsCorrelationKeys" itemSubjectRef="_correlationKeysItem" name="jmsCorrelationKeys"/>
+    <bpmn2:property id="jmsPayload" itemSubjectRef="_payloadItem" name="jmsPayload"/>
     
     <bpmn2:startEvent id="_startEvent" name="Start">
       <bpmn2:outgoing>_flow1</bpmn2:outgoing>
@@ -58,8 +62,18 @@ try {
 String risultatoElaborazione = "OK - Ordine " + ordineId + " elaborato con successo";
 kcontext.setVariable("risultato", risultatoElaborazione);
 
+// Crea Map per JMS risposta
+java.util.Map correlationKeys = new java.util.HashMap();
+correlationKeys.put("ordineId", ordineId);
+kcontext.setVariable("jmsCorrelationKeys", correlationKeys);
+
+java.util.Map payload = new java.util.HashMap();
+payload.put("risultato", risultatoElaborazione);
+kcontext.setVariable("jmsPayload", payload);
+
 System.out.println("[ProcFiglio] Elaborazione completata!");
 System.out.println("[ProcFiglio] Risultato: " + risultatoElaborazione);
+System.out.println("[ProcFiglio] Map create per JMS risposta");
 System.out.println("[ProcFiglio] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
@@ -83,24 +97,18 @@ System.out.println("[ProcFiglio] ======================================");
         </bpmn2:inputSet>
       </bpmn2:ioSpecification>
       <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>jmsCorrelationKeys</bpmn2:sourceRef>
+        <bpmn2:targetRef>_notificaPadre_correlationKeysInput</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>jmsPayload</bpmn2:sourceRef>
+        <bpmn2:targetRef>_notificaPadre_payloadInput</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_notificaPadre_messageNameInput</bpmn2:targetRef>
         <bpmn2:assignment>
           <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[figlioCompletato]]></bpmn2:from>
           <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_messageNameInput</bpmn2:to>
-        </bpmn2:assignment>
-      </bpmn2:dataInputAssociation>
-      <bpmn2:dataInputAssociation>
-        <bpmn2:targetRef>_notificaPadre_correlationKeysInput</bpmn2:targetRef>
-        <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[["ordineId":ordineId]]]></bpmn2:from>
-          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_correlationKeysInput</bpmn2:to>
-        </bpmn2:assignment>
-      </bpmn2:dataInputAssociation>
-      <bpmn2:dataInputAssociation>
-        <bpmn2:targetRef>_notificaPadre_payloadInput</bpmn2:targetRef>
-        <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[["risultato":risultato]]]></bpmn2:from>
-          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_payloadInput</bpmn2:to>
         </bpmn2:assignment>
       </bpmn2:dataInputAssociation>
     </bpmn2:task>

@@ -5,6 +5,7 @@
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                    xmlns:drools="http://www.jboss.org/drools"
+                   xmlns:tns="http://www.jboss.org/drools"
                    id="_ProcFiglio"
                    targetNamespace="http://www.jboss.org/drools">
   
@@ -12,48 +13,26 @@
   <bpmn2:itemDefinition id="_lottoNumeroItem" structureRef="String"/>
   <bpmn2:itemDefinition id="_risultatoItem" structureRef="String"/>
   
-  <!-- Message Definitions -->
-  <bpmn2:message id="_avviaFiglioMessage" name="avviaFiglio" itemRef="_ordineIdItem"/>
-  <bpmn2:message id="_figlioCompletatoMessage" name="figlioCompletato" itemRef="_ordineIdItem"/>
-  
   <bpmn2:process id="com.martinispec.procfiglio" 
                  drools:packageName="com.martinispec.processes" 
                  drools:version="1.0" 
                  name="ProcFiglio" 
                  isExecutable="true">
     
-    <!-- Process Variables -->
     <bpmn2:property id="ordineId" itemSubjectRef="_ordineIdItem" name="ordineId"/>
     <bpmn2:property id="lottoNumero" itemSubjectRef="_lottoNumeroItem" name="lottoNumero"/>
     <bpmn2:property id="risultato" itemSubjectRef="_risultatoItem" name="risultato"/>
     
-    <!-- Message Start Event -->
-    <bpmn2:startEvent id="_startEvent" name="Ricevi Avvio">
+    <bpmn2:startEvent id="_startEvent" name="Start">
       <bpmn2:outgoing>_flow1</bpmn2:outgoing>
-      <bpmn2:dataOutput id="_startEvent_ordineIdOutput" drools:dtype="String" itemSubjectRef="_ordineIdItem" name="ordineId"/>
-      <bpmn2:dataOutput id="_startEvent_lottoNumeroOutput" drools:dtype="String" itemSubjectRef="_lottoNumeroItem" name="lottoNumero"/>
-      <bpmn2:dataOutputAssociation>
-        <bpmn2:sourceRef>_startEvent_ordineIdOutput</bpmn2:sourceRef>
-        <bpmn2:targetRef>ordineId</bpmn2:targetRef>
-      </bpmn2:dataOutputAssociation>
-      <bpmn2:dataOutputAssociation>
-        <bpmn2:sourceRef>_startEvent_lottoNumeroOutput</bpmn2:sourceRef>
-        <bpmn2:targetRef>lottoNumero</bpmn2:targetRef>
-      </bpmn2:dataOutputAssociation>
-      <bpmn2:outputSet>
-        <bpmn2:dataOutputRefs>_startEvent_ordineIdOutput</bpmn2:dataOutputRefs>
-        <bpmn2:dataOutputRefs>_startEvent_lottoNumeroOutput</bpmn2:dataOutputRefs>
-      </bpmn2:outputSet>
-      <bpmn2:messageEventDefinition messageRef="_avviaFiglioMessage"/>
     </bpmn2:startEvent>
     
-    <!-- Script Task: Log Dati Ricevuti -->
     <bpmn2:scriptTask id="_logDati" name="Log Dati Ricevuti" scriptFormat="http://www.java.com/java">
       <bpmn2:incoming>_flow1</bpmn2:incoming>
       <bpmn2:outgoing>_flow2</bpmn2:outgoing>
       <bpmn2:script><![CDATA[
 System.out.println("[ProcFiglio] ======================================");
-System.out.println("[ProcFiglio] PROCESSO AVVIATO!");
+System.out.println("[ProcFiglio] PROCESSO AVVIATO VIA JMS!");
 System.out.println("[ProcFiglio] Dati ricevuti dal padre:");
 System.out.println("[ProcFiglio] ordineId: " + ordineId);
 System.out.println("[ProcFiglio] lottoNumero: " + lottoNumero);
@@ -62,7 +41,6 @@ System.out.println("[ProcFiglio] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
     
-    <!-- Script Task: Elabora Ordine -->
     <bpmn2:scriptTask id="_elaboraOrdine" name="Elabora Ordine" scriptFormat="http://www.java.com/java">
       <bpmn2:incoming>_flow2</bpmn2:incoming>
       <bpmn2:outgoing>_flow3</bpmn2:outgoing>
@@ -71,15 +49,13 @@ System.out.println("[ProcFiglio] ======================================");
 System.out.println("[ProcFiglio] Elaborazione ordine " + ordineId);
 System.out.println("[ProcFiglio] Lotto " + lottoNumero + " in processamento");
 
-// Simulazione elaborazione (3 secondi)
 try {
     Thread.sleep(3000);
 } catch (InterruptedException e) {
     e.printStackTrace();
 }
 
-// Prepara risultato
-String risultatoElaborazione = "OK - Ordine " + ordineId + " elaborato";
+String risultatoElaborazione = "OK - Ordine " + ordineId + " elaborato con successo";
 kcontext.setVariable("risultato", risultatoElaborazione);
 
 System.out.println("[ProcFiglio] Elaborazione completata!");
@@ -88,41 +64,77 @@ System.out.println("[ProcFiglio] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
     
-    <!-- Intermediate Throw Event: Notifica Completamento -->
-    <bpmn2:intermediateThrowEvent id="_notificaCompletamento" name="Notifica Padre">
+    <bpmn2:task id="_notificaPadre" name="Notifica Padre (JMS)" tns:taskName="JMS Send Message">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Notifica Padre (JMS)]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
       <bpmn2:incoming>_flow3</bpmn2:incoming>
       <bpmn2:outgoing>_flow4</bpmn2:outgoing>
-      <bpmn2:dataInput id="_notifica_ordineIdInput" drools:dtype="String" itemSubjectRef="_ordineIdItem" name="ordineId"/>
-      <bpmn2:dataInput id="_notifica_risultatoInput" drools:dtype="String" itemSubjectRef="_risultatoItem" name="risultato"/>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_notificaPadre_messageNameInput" drools:dtype="String" itemSubjectRef="__notificaPadre_messageNameInputItem" name="messageName"/>
+        <bpmn2:dataInput id="_notificaPadre_correlationKeysInput" drools:dtype="Object" itemSubjectRef="__notificaPadre_correlationKeysInputItem" name="correlationKeys"/>
+        <bpmn2:dataInput id="_notificaPadre_payloadInput" drools:dtype="Object" itemSubjectRef="__notificaPadre_payloadInputItem" name="payload"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_notificaPadre_messageNameInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_notificaPadre_correlationKeysInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_notificaPadre_payloadInput</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+      </bpmn2:ioSpecification>
       <bpmn2:dataInputAssociation>
-        <bpmn2:sourceRef>ordineId</bpmn2:sourceRef>
-        <bpmn2:targetRef>_notifica_ordineIdInput</bpmn2:targetRef>
+        <bpmn2:targetRef>_notificaPadre_messageNameInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[figlioCompletato]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_messageNameInput</bpmn2:to>
+        </bpmn2:assignment>
       </bpmn2:dataInputAssociation>
       <bpmn2:dataInputAssociation>
-        <bpmn2:sourceRef>risultato</bpmn2:sourceRef>
-        <bpmn2:targetRef>_notifica_risultatoInput</bpmn2:targetRef>
+        <bpmn2:targetRef>_notificaPadre_correlationKeysInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("ordineId", ordineId); }}}]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_correlationKeysInput</bpmn2:to>
+        </bpmn2:assignment>
       </bpmn2:dataInputAssociation>
-      <bpmn2:inputSet>
-        <bpmn2:dataInputRefs>_notifica_ordineIdInput</bpmn2:dataInputRefs>
-        <bpmn2:dataInputRefs>_notifica_risultatoInput</bpmn2:dataInputRefs>
-      </bpmn2:inputSet>
-      <bpmn2:messageEventDefinition messageRef="_figlioCompletatoMessage"/>
-    </bpmn2:intermediateThrowEvent>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_notificaPadre_payloadInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("risultato", risultato); }}}]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_payloadInput</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:task>
     
-    <!-- End Event -->
-    <bpmn2:endEvent id="_endEvent" name="End">
+    <bpmn2:scriptTask id="_logCompletamento" name="Log Completamento" scriptFormat="http://www.java.com/java">
       <bpmn2:incoming>_flow4</bpmn2:incoming>
+      <bpmn2:outgoing>_flow5</bpmn2:outgoing>
+      <bpmn2:script><![CDATA[
+System.out.println("[ProcFiglio] ======================================");
+System.out.println("[ProcFiglio] Notifica inviata al padre via JMS");
+System.out.println("[ProcFiglio] messageName: figlioCompletato");
+System.out.println("[ProcFiglio] correlationKey: ordineId=" + ordineId);
+System.out.println("[ProcFiglio] payload: risultato=" + risultato);
+System.out.println("[ProcFiglio] PROCESSO FIGLIO TERMINATO");
+System.out.println("[ProcFiglio] ======================================");
+]]></bpmn2:script>
+    </bpmn2:scriptTask>
+    
+    <bpmn2:endEvent id="_endEvent" name="End">
+      <bpmn2:incoming>_flow5</bpmn2:incoming>
     </bpmn2:endEvent>
     
-    <!-- Sequence Flows -->
     <bpmn2:sequenceFlow id="_flow1" sourceRef="_startEvent" targetRef="_logDati"/>
     <bpmn2:sequenceFlow id="_flow2" sourceRef="_logDati" targetRef="_elaboraOrdine"/>
-    <bpmn2:sequenceFlow id="_flow3" sourceRef="_elaboraOrdine" targetRef="_notificaCompletamento"/>
-    <bpmn2:sequenceFlow id="_flow4" sourceRef="_notificaCompletamento" targetRef="_endEvent"/>
+    <bpmn2:sequenceFlow id="_flow3" sourceRef="_elaboraOrdine" targetRef="_notificaPadre"/>
+    <bpmn2:sequenceFlow id="_flow4" sourceRef="_notificaPadre" targetRef="_logCompletamento"/>
+    <bpmn2:sequenceFlow id="_flow5" sourceRef="_logCompletamento" targetRef="_endEvent"/>
     
   </bpmn2:process>
   
-  <!-- Diagram -->
+  <bpmn2:itemDefinition id="__notificaPadre_messageNameInputItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="__notificaPadre_correlationKeysInputItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="__notificaPadre_payloadInputItem" structureRef="Object"/>
+  
   <bpmndi:BPMNDiagram>
     <bpmndi:BPMNPlane bpmnElement="com.martinispec.procfiglio">
       <bpmndi:BPMNShape id="_startEvent_di" bpmnElement="_startEvent">
@@ -134,27 +146,34 @@ System.out.println("[ProcFiglio] ======================================");
       <bpmndi:BPMNShape id="_elaboraOrdine_di" bpmnElement="_elaboraOrdine">
         <dc:Bounds x="286" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="_notificaCompletamento_di" bpmnElement="_notificaCompletamento">
-        <dc:Bounds x="436" y="100" width="36" height="36"/>
+      <bpmndi:BPMNShape id="_notificaPadre_di" bpmnElement="_notificaPadre">
+        <dc:Bounds x="436" y="78" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_logCompletamento_di" bpmnElement="_logCompletamento">
+        <dc:Bounds x="586" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_endEvent_di" bpmnElement="_endEvent">
-        <dc:Bounds x="522" y="100" width="36" height="36"/>
+        <dc:Bounds x="736" y="100" width="36" height="36"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="_flow1_di" bpmnElement="_flow1">
-        <di:waypoint x="86" y="118"/>
-        <di:waypoint x="136" y="118"/>
+        <di:waypoint x="68" y="118"/>
+        <di:waypoint x="186" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow2_di" bpmnElement="_flow2">
         <di:waypoint x="236" y="118"/>
-        <di:waypoint x="286" y="118"/>
+        <di:waypoint x="336" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow3_di" bpmnElement="_flow3">
         <di:waypoint x="386" y="118"/>
-        <di:waypoint x="436" y="118"/>
+        <di:waypoint x="486" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow4_di" bpmnElement="_flow4">
-        <di:waypoint x="472" y="118"/>
-        <di:waypoint x="522" y="118"/>
+        <di:waypoint x="536" y="118"/>
+        <di:waypoint x="636" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="_flow5_di" bpmnElement="_flow5">
+        <di:waypoint x="686" y="118"/>
+        <di:waypoint x="754" y="118"/>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

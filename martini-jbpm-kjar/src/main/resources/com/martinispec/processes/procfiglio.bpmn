@@ -92,14 +92,14 @@ System.out.println("[ProcFiglio] ======================================");
       <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_notificaPadre_correlationKeysInput</bpmn2:targetRef>
         <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("ordineId", ordineId); }}}]]></bpmn2:from>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[["ordineId":ordineId]]]></bpmn2:from>
           <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_correlationKeysInput</bpmn2:to>
         </bpmn2:assignment>
       </bpmn2:dataInputAssociation>
       <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_notificaPadre_payloadInput</bpmn2:targetRef>
         <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("risultato", risultato); }}}]]></bpmn2:from>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[["risultato":risultato]]]></bpmn2:from>
           <bpmn2:to xsi:type="bpmn2:tFormalExpression">_notificaPadre_payloadInput</bpmn2:to>
         </bpmn2:assignment>
       </bpmn2:dataInputAssociation>

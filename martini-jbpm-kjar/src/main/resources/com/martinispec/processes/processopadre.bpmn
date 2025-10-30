@@ -5,6 +5,7 @@
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                    xmlns:drools="http://www.jboss.org/drools"
+                   xmlns:tns="http://www.jboss.org/drools"
                    id="_ProcessoPadre"
                    targetNamespace="http://www.jboss.org/drools">
   
@@ -12,7 +13,6 @@
   <bpmn2:itemDefinition id="_lottoNumeroItem" structureRef="String"/>
   <bpmn2:itemDefinition id="_risultatoItem" structureRef="String"/>
   
-  <bpmn2:signal id="avviaFiglio" name="avviaFiglio"/>
   <bpmn2:signal id="figlioCompletato" name="figlioCompletato"/>
   
   <bpmn2:process id="com.martinispec.processopadre" 
@@ -33,26 +33,82 @@
       <bpmn2:incoming>_flow1</bpmn2:incoming>
       <bpmn2:outgoing>_flow2</bpmn2:outgoing>
       <bpmn2:script><![CDATA[
-System.out.println("[ProcessoPadre] Preparazione dati: ordineId=" + ordineId + ", lottoNumero=" + lottoNumero);
+System.out.println("[ProcessoPadre] ======================================");
+System.out.println("[ProcessoPadre] Preparazione dati per processo figlio");
+System.out.println("[ProcessoPadre] ordineId: " + ordineId);
+System.out.println("[ProcessoPadre] lottoNumero: " + lottoNumero);
+System.out.println("[ProcessoPadre] Process Instance ID: " + kcontext.getProcessInstance().getId());
+System.out.println("[ProcessoPadre] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
     
-    <bpmn2:intermediateThrowEvent id="_avviaFiglio" name="Avvia Figlio">
+    <!-- Service Task: Avvia Figlio via JMS -->
+    <bpmn2:task id="_avviaFiglio" name="Avvia Figlio (JMS)" tns:taskName="JMS Send Message">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Avvia Figlio (JMS)]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
       <bpmn2:incoming>_flow2</bpmn2:incoming>
       <bpmn2:outgoing>_flow3</bpmn2:outgoing>
-      <bpmn2:signalEventDefinition signalRef="avviaFiglio"/>
-    </bpmn2:intermediateThrowEvent>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_avviaFiglio_messageNameInput" drools:dtype="String" itemSubjectRef="__avviaFiglio_messageNameInputItem" name="messageName"/>
+        <bpmn2:dataInput id="_avviaFiglio_targetProcessIdInput" drools:dtype="String" itemSubjectRef="__avviaFiglio_targetProcessIdInputItem" name="targetProcessId"/>
+        <bpmn2:dataInput id="_avviaFiglio_correlationKeysInput" drools:dtype="Object" itemSubjectRef="__avviaFiglio_correlationKeysInputItem" name="correlationKeys"/>
+        <bpmn2:dataInput id="_avviaFiglio_payloadInput" drools:dtype="Object" itemSubjectRef="__avviaFiglio_payloadInputItem" name="payload"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_avviaFiglio_messageNameInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_avviaFiglio_targetProcessIdInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_avviaFiglio_correlationKeysInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_avviaFiglio_payloadInput</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_avviaFiglio_messageNameInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[avviaFiglio]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_avviaFiglio_messageNameInput</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_avviaFiglio_targetProcessIdInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[com.martinispec.procfiglio]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_avviaFiglio_targetProcessIdInput</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_avviaFiglio_correlationKeysInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("ordineId", ordineId); }}}]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_avviaFiglio_correlationKeysInput</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_avviaFiglio_payloadInput</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[#{new java.util.HashMap() {{ put("lottoNumero", lottoNumero); }}}]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_avviaFiglio_payloadInput</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:task>
     
     <bpmn2:scriptTask id="_operazionePadre" name="Operazione Padre" scriptFormat="http://www.java.com/java">
       <bpmn2:incoming>_flow3</bpmn2:incoming>
       <bpmn2:outgoing>_flow4</bpmn2:outgoing>
       <bpmn2:script><![CDATA[
-System.out.println("[ProcessoPadre] Lavoro del padre in corso...");
+System.out.println("[ProcessoPadre] ======================================");
+System.out.println("[ProcessoPadre] Esecuzione operazione del padre");
+System.out.println("[ProcessoPadre] Il processo figlio lavora in parallelo via JMS");
+System.out.println("[ProcessoPadre] Simulazione elaborazione...");
 Thread.sleep(2000);
-System.out.println("[ProcessoPadre] Lavoro completato, attendo figlio");
+System.out.println("[ProcessoPadre] Operazione padre completata");
+System.out.println("[ProcessoPadre] In attesa del completamento del figlio...");
+System.out.println("[ProcessoPadre] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
     
+    <!-- Signal Event: Attendi risposta da MDB -->
     <bpmn2:intermediateCatchEvent id="_attendiFiglio" name="Attendi Completamento">
       <bpmn2:incoming>_flow4</bpmn2:incoming>
       <bpmn2:outgoing>_flow5</bpmn2:outgoing>
@@ -71,7 +127,13 @@ System.out.println("[ProcessoPadre] Lavoro completato, attendo figlio");
       <bpmn2:incoming>_flow5</bpmn2:incoming>
       <bpmn2:outgoing>_flow6</bpmn2:outgoing>
       <bpmn2:script><![CDATA[
-System.out.println("[ProcessoPadre] Figlio completato! Risultato: " + risultato);
+System.out.println("[ProcessoPadre] ======================================");
+System.out.println("[ProcessoPadre] PROCESSO FIGLIO COMPLETATO!");
+System.out.println("[ProcessoPadre] Risultato ricevuto: " + risultato);
+System.out.println("[ProcessoPadre] ordineId: " + ordineId);
+System.out.println("[ProcessoPadre] Finalizzazione processo padre...");
+System.out.println("[ProcessoPadre] PROCESSO PADRE TERMINATO CON SUCCESSO");
+System.out.println("[ProcessoPadre] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
     
@@ -88,6 +150,11 @@ System.out.println("[ProcessoPadre] Figlio completato! Risultato: " + risultato)
     
   </bpmn2:process>
   
+  <bpmn2:itemDefinition id="__avviaFiglio_messageNameInputItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="__avviaFiglio_targetProcessIdInputItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="__avviaFiglio_correlationKeysInputItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="__avviaFiglio_payloadInputItem" structureRef="Object"/>
+  
   <bpmndi:BPMNDiagram>
     <bpmndi:BPMNPlane bpmnElement="com.martinispec.processopadre">
       <bpmndi:BPMNShape id="_startEvent_di" bpmnElement="_startEvent">
@@ -97,19 +164,19 @@ System.out.println("[ProcessoPadre] Figlio completato! Risultato: " + risultato)
         <dc:Bounds x="136" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_avviaFiglio_di" bpmnElement="_avviaFiglio">
-        <dc:Bounds x="286" y="100" width="36" height="36"/>
+        <dc:Bounds x="286" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_operazionePadre_di" bpmnElement="_operazionePadre">
-        <dc:Bounds x="372" y="78" width="100" height="80"/>
+        <dc:Bounds x="436" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_attendiFiglio_di" bpmnElement="_attendiFiglio">
-        <dc:Bounds x="522" y="100" width="36" height="36"/>
+        <dc:Bounds x="586" y="100" width="36" height="36"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_finalizza_di" bpmnElement="_finalizza">
-        <dc:Bounds x="608" y="78" width="100" height="80"/>
+        <dc:Bounds x="672" y="78" width="100" height="80"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_endEvent_di" bpmnElement="_endEvent">
-        <dc:Bounds x="758" y="100" width="36" height="36"/>
+        <dc:Bounds x="822" y="100" width="36" height="36"/>
       </bpmndi:BPMNShape>
       
       <bpmndi:BPMNEdge id="_flow1_di" bpmnElement="_flow1">
@@ -118,23 +185,23 @@ System.out.println("[ProcessoPadre] Figlio completato! Risultato: " + risultato)
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow2_di" bpmnElement="_flow2">
         <di:waypoint x="236" y="118"/>
-        <di:waypoint x="304" y="118"/>
+        <di:waypoint x="336" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow3_di" bpmnElement="_flow3">
-        <di:waypoint x="322" y="118"/>
-        <di:waypoint x="422" y="118"/>
+        <di:waypoint x="386" y="118"/>
+        <di:waypoint x="486" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow4_di" bpmnElement="_flow4">
-        <di:waypoint x="472" y="118"/>
-        <di:waypoint x="540" y="118"/>
+        <di:waypoint x="536" y="118"/>
+        <di:waypoint x="604" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow5_di" bpmnElement="_flow5">
-        <di:waypoint x="558" y="118"/>
-        <di:waypoint x="658" y="118"/>
+        <di:waypoint x="622" y="118"/>
+        <di:waypoint x="722" y="118"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="_flow6_di" bpmnElement="_flow6">
-        <di:waypoint x="708" y="118"/>
-        <di:waypoint x="776" y="118"/>
+        <di:waypoint x="772" y="118"/>
+        <di:waypoint x="840" y="118"/>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

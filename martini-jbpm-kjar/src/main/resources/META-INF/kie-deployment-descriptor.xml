@@ -36,8 +36,16 @@
             <parameters/>
             <name>Service Task</name>
         </work-item-handler>
+        
+        <!-- JMS Send Message Handler - Generic handler for sending BPMN messages via JMS -->
+        <work-item-handler>
+            <resolver>mvel</resolver>
+            <identifier>new com.martinispec.handlers.JmsSendMessageHandler()</identifier>
+            <parameters/>
+            <name>JMS Send Message</name>
+        </work-item-handler>
     </work-item-handlers>
-    
+
     <environment-entries/>
     <configurations/>
     <required-roles/>

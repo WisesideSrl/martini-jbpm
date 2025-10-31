@@ -215,9 +215,11 @@ public class JmsProcessMessageListener implements MessageListener {
             
             int signaled = 0;
             
-            // Cerca il processo che ha una variabile con valore = correlationKey
-            // NOTA: La correlation key può essere in diverse variabili, dipende dalla configurazione del processo
-            // Implementiamo una ricerca flessibile: cerca in tutte le variabili del processo
+            // Cerca il processo che matcha la correlationKey
+            // Strategia:
+            // 1. Prima cerca una variabile chiamata "correlationKey" (convenzione standard)
+            // 2. Se non trovata, cerca tra TUTTE le variabili String che matchano il valore
+            // 3. Questo permette flessibilità senza modificare l'MDB per ogni nuovo processo
             
             for (ProcessInstance instance : activeInstances) {
                 Map<String, Object> processVars = instance.getVariables();
@@ -226,13 +228,30 @@ public class JmsProcessMessageListener implements MessageListener {
                     continue;
                 }
                 
-                // Verifica se una delle variabili contiene il valore della correlationKey
-                boolean matches = processVars.values().stream()
-                    .anyMatch(value -> Objects.equals(String.valueOf(value), correlationKey));
+                boolean matches = false;
+                String matchedVariable = null;
+                
+                // Strategia 1: Cerca prima nella variabile standard "correlationKey"
+                Object correlationKeyValue = processVars.get("correlationKey");
+                if (correlationKeyValue != null && Objects.equals(String.valueOf(correlationKeyValue), correlationKey)) {
+                    matches = true;
+                    matchedVariable = "correlationKey";
+                } else {
+                    // Strategia 2: Cerca in tutte le variabili del processo
+                    // Confronta solo variabili String per evitare falsi positivi con numeri/boolean
+                    for (Map.Entry<String, Object> entry : processVars.entrySet()) {
+                        Object value = entry.getValue();
+                        if (value instanceof String && Objects.equals(value, correlationKey)) {
+                            matches = true;
+                            matchedVariable = entry.getKey();
+                            break;
+                        }
+                    }
+                }
                 
                 if (matches) {
-                    logger.info("JmsProcessMessageListener: Trovato processo {} che matcha correlationKey '{}'", 
-                                instance.getId(), correlationKey);
+                    logger.info("JmsProcessMessageListener: ✅ Trovato processo {} con variabile '{}'='{}' che matcha correlationKey '{}'", 
+                                instance.getId(), matchedVariable, correlationKey, correlationKey);
                     
                     // Invia signal al processo
                     // Il signal name è il messageName

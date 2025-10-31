@@ -40,32 +40,31 @@ spec:
             - name: config-dest
               mountPath: /config-dest
       containers:
-      - env:
-        - name: KIE_SERVER_JMS_QUEUE_REQUEST
-          value: "queue/KIE.SERVER.REQUEST"
-        - name: KIE_SERVER_JMS_QUEUE_RESPONSE
-          value: "queue/KIE.SERVER.RESPONSE"
-        - name: KIE_SERVER_JMS_QUEUE_EXECUTOR
-          value: "queue/KIE.SERVER.EXECUTOR"
-        - name: KIE_SERVER_ID
-          value: jbpm-kie-server
-        - name: KIE_SERVER_LOCATION
-          value: http://localhost:8080/kie-server/services/rest/server
-        - name: JAVA_OPTS
-          value: "-server -Xms512m -Xmx2512m -XX:MetaspaceSize=512M -XX:MaxMetaspaceSize=1512m -Djava.net.preferIPv4Stack=true -Djboss.modules.system.pkgs=org.jboss.byteman -Djava.awt.headless=true  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=jdk.unsupported/sun.misc=ALL-UNNAMED --add-exports=jdk.unsupported/sun.reflect=ALL-UNNAMED"
-        # ✅ Immagine con MDB fat JAR (contiene tutte le dipendenze)
-        image: 192.168.1.128:30002/martini-jbpm/jbpm-server-with-mdb:1.0.2
+      - name: kie-server
+        image: 192.168.1.128:30002/martini-jbpm/jbpm-server-with-mdb:1.0.5
         imagePullPolicy: Always
-        name: kie-server
+        env:
+          - name: KIE_SERVER_JMS_QUEUE_REQUEST
+            value: "queue/KIE.SERVER.REQUEST"
+          - name: KIE_SERVER_JMS_QUEUE_RESPONSE
+            value: "queue/KIE.SERVER.RESPONSE"
+          - name: KIE_SERVER_JMS_QUEUE_EXECUTOR
+            value: "queue/KIE.SERVER.EXECUTOR"
+          - name: KIE_SERVER_ID
+            value: jbpm-kie-server
+          - name: KIE_SERVER_LOCATION
+            value: http://localhost:8080/kie-server/services/rest/server
+          - name: JAVA_OPTS
+            value: "-server -Xms512m -Xmx2512m -XX:MetaspaceSize=512M -XX:MaxMetaspaceSize=1512m -Djava.net.preferIPv4Stack=true -Djboss.modules.system.pkgs=org.jboss.byteman -Djava.awt.headless=true  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=jdk.unsupported/sun.misc=ALL-UNNAMED --add-exports=jdk.unsupported/sun.reflect=ALL-UNNAMED"
         volumeMounts:
           - name: config-dest
             mountPath: /opt/jboss/wildfly/standalone/configuration/standalone.xml
             subPath: standalone.xml
         ports:
-        - containerPort: 8080
-          protocol: TCP
-        - containerPort: 8001
-          protocol: TCP
+          - containerPort: 8080
+            protocol: TCP
+          - containerPort: 8001
+            protocol: TCP
 
 
 ---

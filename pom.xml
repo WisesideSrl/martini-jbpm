@@ -26,13 +26,9 @@
 
     <modules>
         <!-- Moduli attivi -->
-        <module>martini-jbpm-kjar</module>
-        
-        <!-- Moduli futuri (TODO) -->
-        <!--
         <module>martini-jbpm-model</module>
+        <module>martini-jbpm-kjar</module>
         <module>martini-jbpm-service</module>
-        -->
     </modules>
 
     <repositories>

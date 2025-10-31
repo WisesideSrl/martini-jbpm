@@ -31,6 +31,10 @@ echo "- Service JAR: $(du -h martini-jbpm-service-1.0.0-SNAPSHOT.jar | cut -f1)"
 cp -f ../martini-jbpm-model/target/martini-jbpm-model-1.0.0-SNAPSHOT.jar .
 cp -f ../martini-jbpm-model/pom.xml martini-jbpm-model-1.0.0-SNAPSHOT.pom
 echo "- Model JAR/POM copiati"
+# KJAR + POM (processi BPMN)
+cp -f ../martini-jbpm-kjar/target/martiniavicolo-1.0.0-SNAPSHOT.jar .
+cp -f ../martini-jbpm-kjar/pom.xml martiniavicolo-1.0.0-SNAPSHOT.pom
+echo "- KJAR JAR/POM copiati"
 
 # Step 3: Build dell'immagine Docker
 echo ""

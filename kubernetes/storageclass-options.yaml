@@ -1,0 +1,78 @@
+# StorageClass Configuration Guide
+# 
+# Harbor richiede storage persistente. Scegli una delle seguenti opzioni
+# in base alla tua infrastruttura.
+
+---
+# OPZIONE 1: Local Path Provisioner (RACCOMANDATO per cluster on-premise semplice)
+# 
+# Usa lo storage locale dei nodi. Semplice da configurare, adatto per sviluppo
+# e piccole installazioni.
+#
+# Installazione:
+# kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.28/deploy/local-path-storage.yaml
+#
+# Questo crea automaticamente una StorageClass chiamata "local-path"
+
+---
+# OPZIONE 2: NFS (se hai un server NFS)
+#
+# Se hai un server NFS disponibile, puoi usarlo per storage condiviso.
+# Richiede nfs-subdir-external-provisioner
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-client
+provisioner: nfs.csi.k8s.io  # o k8s-sigs.io/nfs-subdir-external-provisioner
+parameters:
+  server: your-nfs-server.local  # MODIFICA: indirizzo del tuo NFS server
+  path: /exported/path           # MODIFICA: path esportato dal NFS server
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+
+---
+# OPZIONE 3: HostPath (SOLO per sviluppo/test - NON per produzione)
+#
+# Usa una directory sul nodo host. Semplice ma non portabile tra nodi.
+# Se il pod viene schedulato su un altro nodo, perde i dati.
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: harbor-pv
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: "/mnt/harbor-data"  # MODIFICA: path sul nodo dove salvare i dati
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: manual
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# OPZIONE 4: Longhorn (Storage distribuito per Kubernetes)
+#
+# Soluzione enterprise-grade, replica i dati tra i nodi.
+# Installazione: https://longhorn.io/docs/latest/deploy/install/
+
+---
+# CONFIGURAZIONE DEFAULT STORAGE CLASS
+#
+# Dopo aver installato/configurato una StorageClass, rendila default:
+#
+# kubectl patch storageclass <NOME-STORAGE-CLASS> \
+#   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+#
+# Esempio con local-path:
+# kubectl patch storageclass local-path \
+#   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'

@@ -1,5 +1,6 @@
 package com.martinispec.jms;
 
+import com.martinispec.model.ProcessMessage;
 import org.kie.server.api.model.definition.ProcessDefinition;
 import org.kie.server.api.model.instance.ProcessInstance;
 import org.kie.server.client.KieServicesClient;
@@ -13,30 +14,30 @@ import org.slf4j.LoggerFactory;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
 import javax.jms.JMSException;
-import javax.jms.MapMessage;
 import javax.jms.Message;
 import javax.jms.MessageListener;
+import javax.jms.ObjectMessage;
 import java.util.*;
 
 /**
- * Generic JMS Message-Driven Bean (MDB) that receives BPMN messages from JMS
- * and routes them to process instances or starts new processes via KIE Server.
+ * Message-Driven Bean per la gestione dei messaggi JMS di comunicazione tra processi.
  * 
- * Supports:
- * 1. Message Start Events: Start new process instance if targetProcessId is specified
- * 2. Intermediate Catch Message Events: Signal existing process instance with correlation
- * 3. Correlation: Uses correlation properties to find target process instance
+ * Logica di routing basata sulla presenza della correlation key:
  * 
- * JMS Message structure (sent by JmsSendMessageHandler):
- * - JMS Property "messageName": BPMN message name (e.g., "figlioCompletato")
- * - JMS Property "targetProcessId": Target process definition ID (optional, for start events)
- * - JMS Property "correlation_*": Correlation keys (e.g., "correlation_ordineId")
- * - JMS Body (MapMessage): Payload data to pass to process
+ * 1. SE correlationKey è NULL o VUOTA:
+ *    - Cerca il processo definition che ha un receive event con nome = messageName
+ *    - Avvia un nuovo processo di quel tipo
+ *    - Passa le variables al nuovo processo
  * 
- * Configuration:
- * - Queue: jms/queue/PROCESS.MESSAGES
- * - KIE Server URL: http://localhost:8080/kie-server/services/rest/server
- * - Container: martiniavicolo_1.0.0-SNAPSHOT (adjust as needed)
+ * 2. SE correlationKey è VALORIZZATA:
+ *    - Cerca processi attivi che hanno una variabile con lo stesso valore della correlationKey
+ *    - Invia un signal con nome = messageName al processo trovato
+ *    - Passa le variables come parte del signal
+ * 
+ * Struttura messaggio attesa: ProcessMessage (ObjectMessage JMS)
+ * - messageName: nome univoco del messaggio (obbligatorio)
+ * - correlationKey: chiave di correlazione (opzionale)
+ * - variables: mappa di variabili da passare al processo
  */
 @MessageDriven(
     name = "JmsProcessMessageListener",
@@ -50,7 +51,7 @@ public class JmsProcessMessageListener implements MessageListener {
     
     private static final Logger logger = LoggerFactory.getLogger(JmsProcessMessageListener.class);
     
-    // KIE Server configuration (adjust as needed)
+    // KIE Server configuration
     private static final String KIE_SERVER_URL = System.getProperty("kie.server.url", 
                                                                      "http://localhost:8080/kie-server/services/rest/server");
     private static final String KIE_SERVER_USER = System.getProperty("kie.server.user", "kieserver");
@@ -60,172 +61,203 @@ public class JmsProcessMessageListener implements MessageListener {
     @Override
     public void onMessage(Message jmsMessage) {
         try {
-            if (!(jmsMessage instanceof MapMessage)) {
-                logger.warn("JmsProcessMessageListener: Received non-MapMessage, ignoring");
+            if (!(jmsMessage instanceof ObjectMessage)) {
+                logger.warn("JmsProcessMessageListener: Messaggio ricevuto non è ObjectMessage, ignoro");
                 return;
             }
             
-            MapMessage mapMessage = (MapMessage) jmsMessage;
+            ObjectMessage objectMessage = (ObjectMessage) jmsMessage;
+            Object payload = objectMessage.getObject();
             
-            // Extract message metadata
-            String messageName = mapMessage.getStringProperty("messageName");
-            String targetProcessId = mapMessage.getStringProperty("targetProcessId");
-            
-            if (messageName == null || messageName.trim().isEmpty()) {
-                logger.error("JmsProcessMessageListener: Missing 'messageName' property, ignoring message");
+            if (!(payload instanceof ProcessMessage)) {
+                logger.error("JmsProcessMessageListener: Payload non è un ProcessMessage, ignoro. Tipo: {}", 
+                            payload != null ? payload.getClass().getName() : "null");
                 return;
             }
             
-            logger.info("JmsProcessMessageListener: Received BPMN message '{}' (JMS MessageID: {})", 
-                        messageName, jmsMessage.getJMSMessageID());
+            ProcessMessage processMessage = (ProcessMessage) payload;
             
-            // Extract correlation keys (properties starting with "correlation_")
-            Map<String, Object> correlationKeys = new HashMap<>();
-            @SuppressWarnings("unchecked")
-            Enumeration<String> propertyNames = mapMessage.getPropertyNames();
-            while (propertyNames.hasMoreElements()) {
-                String propName = propertyNames.nextElement();
-                if (propName.startsWith("correlation_")) {
-                    String key = propName.substring("correlation_".length());
-                    Object value = mapMessage.getObjectProperty(propName);
-                    correlationKeys.put(key, value);
-                }
+            // Validazione
+            if (processMessage.getMessageName() == null || processMessage.getMessageName().trim().isEmpty()) {
+                logger.error("JmsProcessMessageListener: messageName è obbligatorio, ignoro messaggio");
+                return;
             }
             
-            // Extract payload from MapMessage body
-            Map<String, Object> payload = new HashMap<>();
-            @SuppressWarnings("unchecked")
-            Enumeration<String> mapNames = mapMessage.getMapNames();
-            while (mapNames.hasMoreElements()) {
-                String name = mapNames.nextElement();
-                payload.put(name, mapMessage.getObject(name));
-            }
+            logger.info("JmsProcessMessageListener: Ricevuto messaggio '{}' (JMS MessageID: {})", 
+                        processMessage.getMessageName(), jmsMessage.getJMSMessageID());
+            logger.info("JmsProcessMessageListener: CorrelationKey: '{}', Variables: {}", 
+                        processMessage.getCorrelationKey(), processMessage.getVariables().keySet());
             
-            logger.info("JmsProcessMessageListener: Correlation keys: {}, Payload: {}", correlationKeys, payload);
-            
-            // Create KIE Server client
+            // Crea client KIE Server
             KieServicesConfiguration config = KieServicesFactory.newRestConfiguration(KIE_SERVER_URL, 
                                                                                        KIE_SERVER_USER, 
                                                                                        KIE_SERVER_PASSWORD);
-            config.setTimeout(30000L); // 30 seconds timeout
+            config.setTimeout(30000L); // 30 secondi timeout
             KieServicesClient kieClient = KieServicesFactory.newKieServicesClient(config);
             ProcessServicesClient processClient = kieClient.getServicesClient(ProcessServicesClient.class);
             QueryServicesClient queryClient = kieClient.getServicesClient(QueryServicesClient.class);
             
-            // Route message based on type
-            if (targetProcessId != null && !targetProcessId.trim().isEmpty()) {
-                // Message Start Event: Start new process instance
-                handleMessageStartEvent(processClient, targetProcessId, messageName, correlationKeys, payload);
+            // Routing basato su correlationKey
+            if (processMessage.hasCorrelationKey()) {
+                // Scenario 2: Notifica processo esistente con correlation key
+                handleSignalToCorrelatedProcess(processClient, queryClient, processMessage);
             } else {
-                // Intermediate Catch Message Event: Signal existing instance
-                handleIntermediateCatchEvent(processClient, queryClient, messageName, correlationKeys, payload);
+                // Scenario 1: Avvia nuovo processo con receive event
+                handleStartProcessWithReceiveEvent(processClient, queryClient, processMessage);
             }
             
         } catch (JMSException e) {
-            logger.error("JmsProcessMessageListener: JMS error processing message: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process JMS message", e);
+            logger.error("JmsProcessMessageListener: Errore JMS nell'elaborazione del messaggio: {}", e.getMessage(), e);
+            throw new RuntimeException("Errore nell'elaborazione del messaggio JMS", e);
         } catch (Exception e) {
-            logger.error("JmsProcessMessageListener: Unexpected error: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process BPMN message", e);
+            logger.error("JmsProcessMessageListener: Errore inaspettato: {}", e.getMessage(), e);
+            throw new RuntimeException("Errore nell'elaborazione del messaggio", e);
         }
     }
     
     /**
-     * Handle Message Start Event: Start a new process instance
+     * Scenario 1: Avvia un nuovo processo che ha un receive event con il messageName specificato.
+     * 
+     * Logica:
+     * - Query tutti i process definitions nel container
+     * - Per ogni definition, verifica se ha un receive event con nome = messageName
+     * - Avvia il primo processo trovato con le variables del messaggio
      */
-    private void handleMessageStartEvent(ProcessServicesClient processClient, 
-                                         String processId, 
-                                         String messageName,
-                                         Map<String, Object> correlationKeys, 
-                                         Map<String, Object> payload) {
-        logger.info("JmsProcessMessageListener: Starting new process '{}' for message '{}'", processId, messageName);
+    private void handleStartProcessWithReceiveEvent(ProcessServicesClient processClient, 
+                                                     QueryServicesClient queryClient, 
+                                                     ProcessMessage processMessage) {
+        String messageName = processMessage.getMessageName();
+        Map<String, Object> variables = processMessage.getVariables();
         
-        // Merge correlation keys and payload as process variables
-        Map<String, Object> processVariables = new HashMap<>();
-        processVariables.putAll(correlationKeys);
-        processVariables.putAll(payload);
+        logger.info("JmsProcessMessageListener: Cerco processo con receive event per messaggio '{}'", messageName);
         
         try {
-            Long processInstanceId = processClient.startProcess(CONTAINER_ID, processId, processVariables);
-            logger.info("JmsProcessMessageListener: Started process instance {} for message '{}'", 
-                        processInstanceId, messageName);
+            // Ottieni tutti i process definitions nel container
+            List<ProcessDefinition> processDefinitions = queryClient.findProcesses(0, 100);
+            
+            ProcessDefinition targetProcess = null;
+            
+            // Cerca il process definition che ha un receive event con questo messageName
+            // NOTA: jBPM non espone direttamente i receive events via API, quindi usiamo una convenzione:
+            // Il nome del processo o un metadata deve indicare quale messaggio gestisce.
+            // In alternativa, potremmo mantenere una mappa di configurazione messageName -> processId
+            
+            for (ProcessDefinition pd : processDefinitions) {
+                // Strategia 1: Usa un metadata nel processo (es: message-name=OrderCompleted)
+                // Questa informazione andrebbe aggiunta nel BPMN come custom attribute
+                
+                // Strategia 2: Convenzione naming - il process id contiene il message name
+                // Es: processo "com.martinispec.ReceiveOrderCompleted" per messaggio "OrderCompleted"
+                
+                // Strategia 3: Configurazione esterna (database o properties)
+                // Es: messageName -> processId mapping in un file di configurazione
+                
+                // Per ora usiamo una convenzione semplice: il process ID termina con il message name
+                // Es: "com.martinispec.procfiglio" può ricevere messaggio "avviaFiglio"
+                
+                // IMPLEMENTAZIONE TEMPORANEA: cerca process che contiene il messageName nel nome
+                if (pd.getId().toLowerCase().contains(messageName.toLowerCase()) || 
+                    pd.getName().toLowerCase().contains(messageName.toLowerCase())) {
+                    targetProcess = pd;
+                    break;
+                }
+            }
+            
+            if (targetProcess == null) {
+                logger.warn("JmsProcessMessageListener: Nessun processo trovato per receive event con messaggio '{}'. " +
+                           "Disponibili: {}", 
+                           messageName, 
+                           processDefinitions.stream().map(ProcessDefinition::getId).toArray());
+                return;
+            }
+            
+            logger.info("JmsProcessMessageListener: Trovato processo '{}' (ID: {}) per messaggio '{}'", 
+                        targetProcess.getName(), targetProcess.getId(), messageName);
+            
+            // Avvia il processo con le variables
+            Long processInstanceId = processClient.startProcess(CONTAINER_ID, targetProcess.getId(), variables);
+            
+            logger.info("JmsProcessMessageListener: ✅ Avviato nuovo processo '{}' (instance ID: {}) per messaggio '{}'", 
+                        targetProcess.getId(), processInstanceId, messageName);
+            
         } catch (Exception e) {
-            logger.error("JmsProcessMessageListener: Failed to start process '{}': {}", processId, e.getMessage(), e);
-            throw new RuntimeException("Failed to start process", e);
+            logger.error("JmsProcessMessageListener: Errore nell'avvio del processo per messaggio '{}': {}", 
+                         messageName, e.getMessage(), e);
+            throw new RuntimeException("Errore nell'avvio del processo", e);
         }
     }
     
     /**
-     * Handle Intermediate Catch Message Event: Signal existing process instance with correlation
+     * Scenario 2: Invia un signal a un processo esistente identificato dalla correlation key.
+     * 
+     * Logica:
+     * - Query tutti i processi attivi nel container
+     * - Per ogni processo, verifica se ha una variabile con valore uguale alla correlationKey
+     * - Invia un signal con nome = messageName al processo trovato
+     * - Le variables del messaggio vengono passate come event data del signal
      */
-    private void handleIntermediateCatchEvent(ProcessServicesClient processClient,
-                                               QueryServicesClient queryClient,
-                                               String messageName,
-                                               Map<String, Object> correlationKeys,
-                                               Map<String, Object> payload) {
-        logger.info("JmsProcessMessageListener: Signaling existing processes for message '{}' with correlation: {}", 
-                    messageName, correlationKeys);
+    private void handleSignalToCorrelatedProcess(ProcessServicesClient processClient, 
+                                                  QueryServicesClient queryClient, 
+                                                  ProcessMessage processMessage) {
+        String messageName = processMessage.getMessageName();
+        String correlationKey = processMessage.getCorrelationKey();
+        Map<String, Object> variables = processMessage.getVariables();
+        
+        logger.info("JmsProcessMessageListener: Cerco processo con correlationKey '{}' per inviare signal '{}'", 
+                    correlationKey, messageName);
         
         try {
-            // Query active process instances in container
+            // Query tutti i processi attivi nel container
             List<Integer> statuses = Collections.singletonList(org.kie.api.runtime.process.ProcessInstance.STATE_ACTIVE);
             List<ProcessInstance> activeInstances = queryClient.findProcessInstancesByContainerId(CONTAINER_ID, statuses, 0, 100);
             
-            logger.info("JmsProcessMessageListener: Found {} active process instances", activeInstances.size());
+            logger.info("JmsProcessMessageListener: Trovati {} processi attivi nel container", activeInstances.size());
             
-            // For each active instance, check if correlation keys match
             int signaled = 0;
+            
+            // Cerca il processo che ha una variabile con valore = correlationKey
+            // NOTA: La correlation key può essere in diverse variabili, dipende dalla configurazione del processo
+            // Implementiamo una ricerca flessibile: cerca in tutte le variabili del processo
+            
             for (ProcessInstance instance : activeInstances) {
-                if (matchesCorrelation(instance, correlationKeys)) {
-                    // Signal this instance with the message
-                    logger.info("JmsProcessMessageListener: Signaling process instance {} with message '{}'", 
-                                instance.getId(), messageName);
+                Map<String, Object> processVars = instance.getVariables();
+                
+                if (processVars == null || processVars.isEmpty()) {
+                    continue;
+                }
+                
+                // Verifica se una delle variabili contiene il valore della correlationKey
+                boolean matches = processVars.values().stream()
+                    .anyMatch(value -> Objects.equals(String.valueOf(value), correlationKey));
+                
+                if (matches) {
+                    logger.info("JmsProcessMessageListener: Trovato processo {} che matcha correlationKey '{}'", 
+                                instance.getId(), correlationKey);
                     
-                    // Signal using message name as signal type, passing payload as event data
-                    processClient.signalProcessInstance(CONTAINER_ID, instance.getId(), messageName, payload);
+                    // Invia signal al processo
+                    // Il signal name è il messageName
+                    // Le variables vengono passate come event data
+                    processClient.signalProcessInstance(CONTAINER_ID, instance.getId(), messageName, variables);
+                    
                     signaled++;
+                    
+                    logger.info("JmsProcessMessageListener: ✅ Inviato signal '{}' a processo {} (correlationKey: '{}')", 
+                                messageName, instance.getId(), correlationKey);
                 }
             }
             
             if (signaled == 0) {
-                logger.warn("JmsProcessMessageListener: No process instances matched correlation keys {} for message '{}'", 
-                            correlationKeys, messageName);
+                logger.warn("JmsProcessMessageListener: ⚠️  Nessun processo attivo trovato con correlationKey '{}' per messaggio '{}'", 
+                            correlationKey, messageName);
             } else {
-                logger.info("JmsProcessMessageListener: Successfully signaled {} process instance(s) for message '{}'", 
-                            signaled, messageName);
+                logger.info("JmsProcessMessageListener: ✅ Signal '{}' inviato a {} processo(i) con correlationKey '{}'", 
+                            messageName, signaled, correlationKey);
             }
             
         } catch (Exception e) {
-            logger.error("JmsProcessMessageListener: Failed to signal processes for message '{}': {}", 
+            logger.error("JmsProcessMessageListener: Errore nell'invio del signal per messaggio '{}': {}", 
                          messageName, e.getMessage(), e);
-            throw new RuntimeException("Failed to signal process instances", e);
+            throw new RuntimeException("Errore nell'invio del signal", e);
         }
-    }
-    
-    /**
-     * Check if process instance variables match correlation keys
-     */
-    private boolean matchesCorrelation(ProcessInstance instance, Map<String, Object> correlationKeys) {
-        if (correlationKeys == null || correlationKeys.isEmpty()) {
-            return false; // No correlation, can't match
-        }
-        
-        Map<String, Object> processVariables = instance.getVariables();
-        if (processVariables == null) {
-            return false;
-        }
-        
-        // All correlation keys must match
-        for (Map.Entry<String, Object> entry : correlationKeys.entrySet()) {
-            String key = entry.getKey();
-            Object expectedValue = entry.getValue();
-            Object actualValue = processVariables.get(key);
-            
-            if (!Objects.equals(expectedValue, actualValue)) {
-                return false; // Mismatch
-            }
-        }
-        
-        return true; // All keys matched
     }
 }

@@ -62,18 +62,18 @@ try {
 String risultatoElaborazione = "OK - Ordine " + ordineId + " elaborato con successo";
 kcontext.setVariable("risultato", risultatoElaborazione);
 
-// Crea Map per JMS risposta
-java.util.Map correlationKeys = new java.util.HashMap();
-correlationKeys.put("ordineId", ordineId);
-kcontext.setVariable("jmsCorrelationKeys", correlationKeys);
+// Imposta correlationKey per notificare il processo padre
+kcontext.setVariable("jmsCorrelationKeys", ordineId);
 
-java.util.Map payload = new java.util.HashMap();
-payload.put("risultato", risultatoElaborazione);
-kcontext.setVariable("jmsPayload", payload);
+// Crea Map variables per risposta (nuovo formato ProcessMessage)
+java.util.Map variables = new java.util.HashMap();
+variables.put("risultato", risultatoElaborazione);
+kcontext.setVariable("jmsPayload", variables);
 
 System.out.println("[ProcFiglio] Elaborazione completata!");
 System.out.println("[ProcFiglio] Risultato: " + risultatoElaborazione);
-System.out.println("[ProcFiglio] Map create per JMS risposta");
+System.out.println("[ProcFiglio] correlationKey impostata: " + ordineId);
+System.out.println("[ProcFiglio] Variables create per JMS risposta (nuovo formato ProcessMessage)");
 System.out.println("[ProcFiglio] ======================================");
 ]]></bpmn2:script>
     </bpmn2:scriptTask>
@@ -88,21 +88,21 @@ System.out.println("[ProcFiglio] ======================================");
       <bpmn2:outgoing>_flow4</bpmn2:outgoing>
       <bpmn2:ioSpecification>
         <bpmn2:dataInput id="_notificaPadre_messageNameInput" drools:dtype="String" itemSubjectRef="__notificaPadre_messageNameInputItem" name="messageName"/>
-        <bpmn2:dataInput id="_notificaPadre_correlationKeysInput" drools:dtype="Object" itemSubjectRef="__notificaPadre_correlationKeysInputItem" name="correlationKeys"/>
-        <bpmn2:dataInput id="_notificaPadre_payloadInput" drools:dtype="Object" itemSubjectRef="__notificaPadre_payloadInputItem" name="payload"/>
+        <bpmn2:dataInput id="_notificaPadre_correlationKeyInput" drools:dtype="String" itemSubjectRef="__notificaPadre_correlationKeyInputItem" name="correlationKey"/>
+        <bpmn2:dataInput id="_notificaPadre_variablesInput" drools:dtype="Object" itemSubjectRef="__notificaPadre_variablesInputItem" name="variables"/>
         <bpmn2:inputSet>
           <bpmn2:dataInputRefs>_notificaPadre_messageNameInput</bpmn2:dataInputRefs>
-          <bpmn2:dataInputRefs>_notificaPadre_correlationKeysInput</bpmn2:dataInputRefs>
-          <bpmn2:dataInputRefs>_notificaPadre_payloadInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_notificaPadre_correlationKeyInput</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_notificaPadre_variablesInput</bpmn2:dataInputRefs>
         </bpmn2:inputSet>
       </bpmn2:ioSpecification>
       <bpmn2:dataInputAssociation>
         <bpmn2:sourceRef>jmsCorrelationKeys</bpmn2:sourceRef>
-        <bpmn2:targetRef>_notificaPadre_correlationKeysInput</bpmn2:targetRef>
+        <bpmn2:targetRef>_notificaPadre_correlationKeyInput</bpmn2:targetRef>
       </bpmn2:dataInputAssociation>
       <bpmn2:dataInputAssociation>
         <bpmn2:sourceRef>jmsPayload</bpmn2:sourceRef>
-        <bpmn2:targetRef>_notificaPadre_payloadInput</bpmn2:targetRef>
+        <bpmn2:targetRef>_notificaPadre_variablesInput</bpmn2:targetRef>
       </bpmn2:dataInputAssociation>
       <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_notificaPadre_messageNameInput</bpmn2:targetRef>
@@ -118,10 +118,10 @@ System.out.println("[ProcFiglio] ======================================");
       <bpmn2:outgoing>_flow5</bpmn2:outgoing>
       <bpmn2:script><![CDATA[
 System.out.println("[ProcFiglio] ======================================");
-System.out.println("[ProcFiglio] Notifica inviata al padre via JMS");
+System.out.println("[ProcFiglio] Notifica inviata al padre via JMS (nuovo formato ProcessMessage)");
 System.out.println("[ProcFiglio] messageName: figlioCompletato");
-System.out.println("[ProcFiglio] correlationKey: ordineId=" + ordineId);
-System.out.println("[ProcFiglio] payload: risultato=" + risultato);
+System.out.println("[ProcFiglio] correlationKey: " + ordineId);
+System.out.println("[ProcFiglio] variables: risultato=" + risultato);
 System.out.println("[ProcFiglio] PROCESSO FIGLIO TERMINATO");
 System.out.println("[ProcFiglio] ======================================");
 ]]></bpmn2:script>
@@ -140,8 +140,8 @@ System.out.println("[ProcFiglio] ======================================");
   </bpmn2:process>
   
   <bpmn2:itemDefinition id="__notificaPadre_messageNameInputItem" structureRef="String"/>
-  <bpmn2:itemDefinition id="__notificaPadre_correlationKeysInputItem" structureRef="Object"/>
-  <bpmn2:itemDefinition id="__notificaPadre_payloadInputItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="__notificaPadre_correlationKeyInputItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="__notificaPadre_variablesInputItem" structureRef="Object"/>
   
   <bpmndi:BPMNDiagram>
     <bpmndi:BPMNPlane bpmnElement="com.martinispec.procfiglio">

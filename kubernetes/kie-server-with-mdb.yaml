@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kie-server
+  name: kie-server
+  namespace: jbpm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kie-server
+  template:
+    metadata:
+      labels:
+        app: kie-server
+    spec:
+      # Secret per accedere al registry Harbor
+      imagePullSecrets:
+      - name: harbor-registry
+      volumes:
+      - name: config-src
+        configMap:
+          name: jbpm-standalone-config
+      - name: config-dest
+        emptyDir: {}
+      initContainers:
+        - name: copy-config
+          image: busybox:latest
+          command: 
+            - /bin/sh
+            - -c
+            - |
+              cp /tmp/config/standalone.xml /config-dest/ && \
+              chown 1000:0 /config-dest/standalone.xml && \
+              chmod 664 /config-dest/standalone.xml
+          volumeMounts:
+            - name: config-src
+              mountPath: /tmp/config
+            - name: config-dest
+              mountPath: /config-dest
+      containers:
+      - env:
+        - name: KIE_SERVER_JMS_QUEUE_REQUEST
+          value: "queue/KIE.SERVER.REQUEST"
+        - name: KIE_SERVER_JMS_QUEUE_RESPONSE
+          value: "queue/KIE.SERVER.RESPONSE"
+        - name: KIE_SERVER_JMS_QUEUE_EXECUTOR
+          value: "queue/KIE.SERVER.EXECUTOR"
+        - name: KIE_SERVER_ID
+          value: jbpm-kie-server
+        - name: KIE_SERVER_LOCATION
+          value: http://localhost:8080/kie-server/services/rest/server
+        - name: JAVA_OPTS
+          value: "-server -Xms512m -Xmx2512m -XX:MetaspaceSize=512M -XX:MaxMetaspaceSize=1512m -Djava.net.preferIPv4Stack=true -Djboss.modules.system.pkgs=org.jboss.byteman -Djava.awt.headless=true  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=jdk.unsupported/sun.misc=ALL-UNNAMED --add-exports=jdk.unsupported/sun.reflect=ALL-UNNAMED"
+        # ✅ Immagine con MDB fat JAR (contiene tutte le dipendenze)
+        image: 192.168.1.128:30002/martini-jbpm/jbpm-server-with-mdb:1.0.2
+        imagePullPolicy: Always
+        name: kie-server
+        volumeMounts:
+          - name: config-dest
+            mountPath: /opt/jboss/wildfly/standalone/configuration/standalone.xml
+            subPath: standalone.xml
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        - containerPort: 8001
+          protocol: TCP
+
+
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kie-service
+  namespace: jbpm
+spec:
+  selector:
+    app: kie-server  # deve corrispondere ai label del deployment
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+    - name: metrics
+      port: 8001
+      targetPort: 8001

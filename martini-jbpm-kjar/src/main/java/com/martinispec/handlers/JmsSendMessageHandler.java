@@ -1,5 +1,6 @@
 package com.martinispec.handlers;
 
+import com.martinispec.model.ProcessMessage;
 import org.kie.api.runtime.process.WorkItem;
 import org.kie.api.runtime.process.WorkItemHandler;
 import org.kie.api.runtime.process.WorkItemManager;
@@ -13,22 +14,19 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Generic JMS WorkItemHandler for sending BPMN messages via JMS with QoS.
+ * WorkItemHandler per l'invio di messaggi JMS con la struttura ProcessMessage.
  * 
- * Usage in BPMN Service Task:
+ * Utilizzo nel Service Task BPMN:
  * - Work Item: "JMS Send Message"
- * - Parameters:
- *   - messageName (String, required): BPMN message name (e.g., "avviaFiglio", "figlioCompletato")
- *   - queueJndi (String, optional): Target JMS queue JNDI name (default: "jms/queue/PROCESS.MESSAGES")
- *   - correlationKeys (Map<String,Object>, optional): Correlation keys (e.g., {"ordineId": "ORD-001"})
- *   - payload (Map<String,Object>, optional): Message payload data
- *   - targetProcessId (String, optional): Target process definition ID for message start events
+ * - Parametri da configurare nell'elemento BPMN:
+ *   - messageName (String, obbligatorio): Nome univoco del messaggio (es: "OrderCompleted")
+ *   - correlationKey (String, opzionale): Chiave di correlazione per notificare processo esistente
+ *   - variables (Map<String,Object>, opzionale): Variabili da passare al processo target
+ *   - queueJndi (String, opzionale): Nome JNDI della coda (default: "jms/queue/PROCESS.MESSAGES")
  * 
- * JMS Message structure:
- * - JMS Property "messageName": BPMN message name
- * - JMS Property "targetProcessId": Target process ID (for start events)
- * - JMS Property "correlation_*": Each correlation key as separate property
- * - JMS Body (MapMessage): Payload data
+ * Comportamento:
+ * - Se correlationKey è vuota/null: il messaggio avvierà un nuovo processo con receive event matching
+ * - Se correlationKey è valorizzata: il messaggio notificherà il processo in attesa con quella correlation key
  */
 public class JmsSendMessageHandler implements WorkItemHandler {
     
@@ -39,40 +37,36 @@ public class JmsSendMessageHandler implements WorkItemHandler {
     
     @Override
     public void executeWorkItem(WorkItem workItem, WorkItemManager manager) {
-        // Extract parameters
+        // Estrai parametri configurabili dall'elemento BPMN
         String messageName = (String) workItem.getParameter("messageName");
+        String correlationKey = (String) workItem.getParameter("correlationKey");
         String queueJndi = (String) workItem.getParameter("queueJndi");
-        String targetProcessId = (String) workItem.getParameter("targetProcessId");
         
         @SuppressWarnings("unchecked")
-        Map<String, Object> correlationKeys = (Map<String, Object>) workItem.getParameter("correlationKeys");
+        Map<String, Object> variables = (Map<String, Object>) workItem.getParameter("variables");
         
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) workItem.getParameter("payload");
-        
-        // Validation
+        // Validazione messageName (obbligatorio)
         if (messageName == null || messageName.trim().isEmpty()) {
-            String error = "JmsSendMessageHandler: 'messageName' parameter is required";
+            String error = "JmsSendMessageHandler: 'messageName' è obbligatorio";
             logger.error(error);
             manager.abortWorkItem(workItem.getId());
             throw new IllegalArgumentException(error);
         }
         
-        // Use default queue if not specified
+        // Usa coda predefinita se non specificata
         if (queueJndi == null || queueJndi.trim().isEmpty()) {
             queueJndi = DEFAULT_QUEUE_JNDI;
         }
         
-        if (correlationKeys == null) {
-            correlationKeys = new HashMap<>();
+        if (variables == null) {
+            variables = new HashMap<>();
         }
         
-        if (payload == null) {
-            payload = new HashMap<>();
-        }
+        // Crea il ProcessMessage con la struttura standard
+        ProcessMessage processMessage = new ProcessMessage(messageName, correlationKey, variables);
         
-        logger.info("JmsSendMessageHandler: Sending BPMN message '{}' to queue '{}' with correlation keys: {}", 
-                    messageName, queueJndi, correlationKeys);
+        logger.info("JmsSendMessageHandler: Invio messaggio '{}' alla coda '{}' - CorrelationKey: '{}' - Variables: {}", 
+                    messageName, queueJndi, correlationKey, variables.keySet());
         
         Connection connection = null;
         Session session = null;
@@ -83,61 +77,38 @@ public class JmsSendMessageHandler implements WorkItemHandler {
             ConnectionFactory cf = (ConnectionFactory) ctx.lookup(CONNECTION_FACTORY_JNDI);
             Destination queue = (Destination) ctx.lookup(queueJndi);
             
-            // Create JMS connection and session
+            // Crea connessione e sessione JMS
             connection = cf.createConnection();
             session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             MessageProducer producer = session.createProducer(queue);
             
-            // Create MapMessage
-            MapMessage message = session.createMapMessage();
+            // Crea ObjectMessage con il ProcessMessage
+            ObjectMessage message = session.createObjectMessage(processMessage);
             
-            // Set BPMN message name as JMS property
+            // Aggiungi proprietà JMS per filtering (opzionale ma utile per monitoring)
             message.setStringProperty("messageName", messageName);
-            
-            // Set target process ID if specified (for message start events)
-            if (targetProcessId != null && !targetProcessId.trim().isEmpty()) {
-                message.setStringProperty("targetProcessId", targetProcessId);
+            if (correlationKey != null && !correlationKey.trim().isEmpty()) {
+                message.setStringProperty("correlationKey", correlationKey);
             }
             
-            // Set correlation keys as JMS properties (prefixed with "correlation_")
-            for (Map.Entry<String, Object> entry : correlationKeys.entrySet()) {
-                String key = "correlation_" + entry.getKey();
-                Object value = entry.getValue();
-                
-                if (value instanceof String) {
-                    message.setStringProperty(key, (String) value);
-                } else if (value instanceof Integer) {
-                    message.setIntProperty(key, (Integer) value);
-                } else if (value instanceof Long) {
-                    message.setLongProperty(key, (Long) value);
-                } else if (value != null) {
-                    message.setStringProperty(key, value.toString());
-                }
-            }
-            
-            // Set payload as MapMessage body
-            for (Map.Entry<String, Object> entry : payload.entrySet()) {
-                message.setObject(entry.getKey(), entry.getValue());
-            }
-            
-            // Send message with PERSISTENT delivery mode for QoS
+            // Invia con PERSISTENT delivery mode per QoS
             producer.send(message, DeliveryMode.PERSISTENT, Message.DEFAULT_PRIORITY, Message.DEFAULT_TIME_TO_LIVE);
             
-            logger.info("JmsSendMessageHandler: Successfully sent message '{}' with JMS MessageID: {}", 
+            logger.info("JmsSendMessageHandler: Messaggio '{}' inviato con successo - JMS MessageID: {}", 
                         messageName, message.getJMSMessageID());
             
-            // Complete work item
+            // Completa work item
             manager.completeWorkItem(workItem.getId(), new HashMap<>());
             
         } catch (NamingException e) {
-            logger.error("JmsSendMessageHandler: JNDI lookup failed for queue '{}': {}", queueJndi, e.getMessage(), e);
+            logger.error("JmsSendMessageHandler: JNDI lookup fallito per la coda '{}': {}", queueJndi, e.getMessage(), e);
             manager.abortWorkItem(workItem.getId());
-            throw new RuntimeException("JNDI lookup failed", e);
+            throw new RuntimeException("JNDI lookup fallito", e);
             
         } catch (JMSException e) {
-            logger.error("JmsSendMessageHandler: JMS error while sending message '{}': {}", messageName, e.getMessage(), e);
+            logger.error("JmsSendMessageHandler: Errore JMS durante l'invio del messaggio '{}': {}", messageName, e.getMessage(), e);
             manager.abortWorkItem(workItem.getId());
-            throw new RuntimeException("JMS send failed", e);
+            throw new RuntimeException("Invio JMS fallito", e);
             
         } finally {
             // Cleanup
@@ -145,7 +116,7 @@ public class JmsSendMessageHandler implements WorkItemHandler {
                 if (session != null) session.close();
                 if (connection != null) connection.close();
             } catch (JMSException e) {
-                logger.warn("JmsSendMessageHandler: Error closing JMS resources: {}", e.getMessage());
+                logger.warn("JmsSendMessageHandler: Errore durante la chiusura delle risorse JMS: {}", e.getMessage());
             }
         }
     }

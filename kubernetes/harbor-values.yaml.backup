@@ -1,0 +1,109 @@
+# Harbor Configuration for Kubernetes Cluster
+# Configurazione ottimizzata per cluster a 2 nodi
+
+# Expose Harbor via NodePort (più semplice per setup locale)
+# Cambia a LoadBalancer se hai un load balancer nel cluster
+expose:
+  type: nodePort
+  tls:
+    enabled: false  # Disabilita TLS per setup iniziale (puoi abilitarlo dopo)
+  nodePort:
+    # Porte per accesso esterno
+    ports:
+      http:
+        nodePort: 30002  # Accesso HTTP a Harbor
+      https:
+        nodePort: 30003  # Accesso HTTPS a Harbor (se abiliti TLS)
+      notary:
+        nodePort: 30004
+
+# Credenziali admin di Harbor
+# ⚠️ CAMBIA QUESTA PASSWORD IN PRODUZIONE!
+harborAdminPassword: "Harbor12345"
+
+# Configurazione del database PostgreSQL interno
+database:
+  type: internal
+  internal:
+    # Password per il database PostgreSQL
+    password: "changeit"
+    # Storage per il database
+    # PersistentVolume: assicurati di avere uno storage class configurato
+    persistentVolumeClaim:
+      storageClass: ""  # Usa default storage class
+      size: 5Gi
+
+# Storage per le immagini Docker
+persistence:
+  enabled: true
+  persistentVolumeClaim:
+    registry:
+      storageClass: ""  # Usa default storage class
+      size: 20Gi  # Spazio per le immagini Docker
+      accessMode: ReadWriteOnce
+    jobservice:
+      storageClass: ""
+      size: 1Gi
+    # Redis per cache
+    redis:
+      storageClass: ""
+      size: 1Gi
+    # Trivy per security scanning
+    trivy:
+      storageClass: ""
+      size: 5Gi
+
+# Configurazione External URL
+# ⚠️ IMPORTANTE: Sostituisci con l'IP o hostname del tuo nodo worker
+externalURL: http://wise-cluster-a:30002
+
+# Componenti di Harbor
+# Per un cluster a 2 nodi, usiamo 1 replica per componente
+portal:
+  replicas: 1
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 500m
+
+core:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+jobservice:
+  replicas: 1
+
+registry:
+  replicas: 1
+  controller:
+    replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+trivy:
+  enabled: true  # Scanner di vulnerabilità
+  replicas: 1
+
+notary:
+  enabled: false  # Disabilita Notary per semplificare (puoi abilitarlo dopo)
+
+chartmuseum:
+  enabled: false  # Disabilita ChartMuseum se non serve (Helm charts)
+
+# Metrics (opzionale - utile per monitoring)
+metrics:
+  enabled: false

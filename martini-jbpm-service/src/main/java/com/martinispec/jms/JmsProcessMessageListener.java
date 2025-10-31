@@ -137,29 +137,72 @@ public class JmsProcessMessageListener implements MessageListener {
             
             ProcessDefinition targetProcess = null;
             
-            // Cerca il process definition che ha un receive event con questo messageName
-            // NOTA: jBPM non espone direttamente i receive events via API, quindi usiamo una convenzione:
-            // Il nome del processo o un metadata deve indicare quale messaggio gestisce.
-            // In alternativa, potremmo mantenere una mappa di configurazione messageName -> processId
-            
-            for (ProcessDefinition pd : processDefinitions) {
-                // Strategia 1: Usa un metadata nel processo (es: message-name=OrderCompleted)
-                // Questa informazione andrebbe aggiunta nel BPMN come custom attribute
-                
-                // Strategia 2: Convenzione naming - il process id contiene il message name
-                // Es: processo "com.martinispec.ReceiveOrderCompleted" per messaggio "OrderCompleted"
-                
-                // Strategia 3: Configurazione esterna (database o properties)
-                // Es: messageName -> processId mapping in un file di configurazione
-                
-                // Per ora usiamo una convenzione semplice: il process ID termina con il message name
-                // Es: "com.martinispec.procfiglio" può ricevere messaggio "avviaFiglio"
-                
-                // IMPLEMENTAZIONE TEMPORANEA: cerca process che contiene il messageName nel nome
-                if (pd.getId().toLowerCase().contains(messageName.toLowerCase()) || 
-                    pd.getName().toLowerCase().contains(messageName.toLowerCase())) {
-                    targetProcess = pd;
-                    break;
+            // 0) Configurazione esterna: system property o env var
+            //    -Dmessage.routing.<messageName>=<processId>
+            //    MESSAGE_ROUTING_<MESSAGENAME>=<processId>
+            String sysKey = "message.routing." + messageName;
+            String envKey = "MESSAGE_ROUTING_" + messageName.replaceAll("[^A-Za-z0-9]", "_").toUpperCase();
+            String configuredProcessId = Optional.ofNullable(System.getProperty(sysKey))
+                                                .orElse(System.getenv(envKey));
+
+            if (configuredProcessId != null && !configuredProcessId.trim().isEmpty()) {
+                String cfg = configuredProcessId.trim();
+                for (ProcessDefinition pd : processDefinitions) {
+                    if (pd.getId().equals(cfg)) {
+                        targetProcess = pd;
+                        logger.info("JmsProcessMessageListener: Routing configurato per '{}': uso processo '{}'", messageName, cfg);
+                        break;
+                    }
+                }
+                if (targetProcess == null) {
+                    logger.warn("JmsProcessMessageListener: Routing configurato '{}' per messaggio '{}' ma processId non trovato nel container", cfg, messageName);
+                }
+            }
+
+            // 1) Ricerca diretta: id o name contiene l'intero messageName
+            if (targetProcess == null) {
+                String mn = messageName.toLowerCase();
+                for (ProcessDefinition pd : processDefinitions) {
+                    if ((pd.getId() != null && pd.getId().toLowerCase().contains(mn)) ||
+                        (pd.getName() != null && pd.getName().toLowerCase().contains(mn))) {
+                        targetProcess = pd;
+                        break;
+                    }
+                }
+            }
+
+            // 2) Ricerca fuzzy: tokenizza il messageName (camelCase/simboli) e cerca token significativi (>=4 char)
+            if (targetProcess == null) {
+                String tokenized = messageName.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase();
+                String[] tokens = tokenized.split("[^a-z0-9]+");
+                Set<String> keywords = new LinkedHashSet<>();
+                for (String t : tokens) {
+                    if (t != null && t.length() >= 4) {
+                        keywords.add(t);
+                    }
+                }
+                // fallback: se nessun token >=4, prendi anche quelli >=3
+                if (keywords.isEmpty()) {
+                    for (String t : tokens) {
+                        if (t != null && t.length() >= 3) {
+                            keywords.add(t);
+                        }
+                    }
+                }
+
+                if (!keywords.isEmpty()) {
+                    for (ProcessDefinition pd : processDefinitions) {
+                        String id = Optional.ofNullable(pd.getId()).orElse("").toLowerCase();
+                        String name = Optional.ofNullable(pd.getName()).orElse("").toLowerCase();
+                        for (String kw : keywords) {
+                            if (id.contains(kw) || name.contains(kw)) {
+                                targetProcess = pd;
+                                logger.info("JmsProcessMessageListener: Match fuzzy '{}' -> processo '{}' su keyword '{}'", messageName, pd.getId(), kw);
+                                break;
+                            }
+                        }
+                        if (targetProcess != null) break;
+                    }
                 }
             }
             

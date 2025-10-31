@@ -15,21 +15,22 @@ echo "Image: ${FULL_IMAGE_NAME}"
 echo ""
 
 # Step 1: Build del MDB se non esiste
-echo "Step 1: Building MDB JAR..."
-if [ ! -f "../martini-jbpm-service/target/martini-jbpm-service-1.0.0-SNAPSHOT.jar" ]; then
-    echo "JAR not found, building..."
-    cd ../martini-jbpm-service
-    mvn clean package -DskipTests
-    cd ../kubernetes
-else
-    echo "JAR already exists, skipping build"
-fi
+echo "Step 1: Building project (model + kjar + service) ..."
+pushd .. >/dev/null
+export JAVA_HOME=$(/usr/libexec/java_home -v 11)
+mvn -DskipTests clean install
+popd >/dev/null
 
 # Step 2: Copia il fat JAR nella directory kubernetes
 echo ""
-echo "Step 2: Copying MDB fat JAR to kubernetes directory..."
-cp ../martini-jbpm-service/target/martini-jbpm-service-1.0.0-SNAPSHOT.jar .
-echo "Copied fat JAR ($(du -h martini-jbpm-service-1.0.0-SNAPSHOT.jar | cut -f1))"
+echo "Step 2: Copying artifacts to kubernetes directory..."
+# Service fat JAR
+cp -f ../martini-jbpm-service/target/martini-jbpm-service-1.0.0-SNAPSHOT.jar .
+echo "- Service JAR: $(du -h martini-jbpm-service-1.0.0-SNAPSHOT.jar | cut -f1)"
+# Model JAR + POM (rinominato al formato atteso da Maven local repo)
+cp -f ../martini-jbpm-model/target/martini-jbpm-model-1.0.0-SNAPSHOT.jar .
+cp -f ../martini-jbpm-model/pom.xml martini-jbpm-model-1.0.0-SNAPSHOT.pom
+echo "- Model JAR/POM copiati"
 
 # Step 3: Build dell'immagine Docker
 echo ""
